@@ -276,6 +276,8 @@ def gateway(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Start the nanobot gateway."""
+    from loguru import logger
+
     from nanobot.agent.loop import AgentLoop
     from nanobot.bus.queue import MessageBus
     from nanobot.channels.manager import ChannelManager
@@ -287,7 +289,11 @@ def gateway(
 
     if verbose:
         import logging
+        import sys
         logging.basicConfig(level=logging.DEBUG)
+        logger.remove()
+        logger.add(sys.stderr, level="DEBUG")
+        logger.enable("nanobot")
 
     config_path = Path(config) if config else None
     config = load_config(config_path)

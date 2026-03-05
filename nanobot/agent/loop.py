@@ -190,6 +190,7 @@ class AgentLoop:
 
         while iteration < self.max_iterations:
             iteration += 1
+            logger.debug("Agent loop iteration {}/{}", iteration, self.max_iterations)
 
             response = await self.provider.chat(
                 messages=messages,
@@ -198,6 +199,14 @@ class AgentLoop:
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
                 reasoning_effort=self.reasoning_effort,
+            )
+
+            logger.debug(
+                "LLM response: has_tool_calls={}, finish_reason={}, content_length={}, content_preview={}",
+                response.has_tool_calls,
+                response.finish_reason,
+                len(response.content) if response.content else 0,
+                (response.content[:100] if response.content else "<empty>"),
             )
 
             if response.has_tool_calls:
@@ -243,6 +252,13 @@ class AgentLoop:
                     )
             else:
                 clean = self._strip_think(response.content)
+                logger.debug(
+                    "No tool calls, final response: finish_reason={}, raw_content_length={}, clean_content_length={}, clean_preview={}",
+                    response.finish_reason,
+                    len(response.content) if response.content else 0,
+                    len(clean) if clean else 0,
+                    (clean[:100] if clean else "<empty>"),
+                )
                 # Don't persist error responses to session history — they can
                 # poison the context and cause permanent 400 loops (#1303).
                 if response.finish_reason == "error":
@@ -254,6 +270,8 @@ class AgentLoop:
                     thinking_blocks=response.thinking_blocks,
                 )
                 final_content = clean
+                if not final_content:
+                    logger.warning("LLM returned empty final content after {} iterations", iteration)
                 break
 
         if final_content is None and iteration >= self.max_iterations:
@@ -441,11 +459,17 @@ class AgentLoop:
                 channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
             ))
 
-        final_content, _, all_msgs = await self._run_agent_loop(
+        final_content, tools_used, all_msgs = await self._run_agent_loop(
             initial_messages, on_progress=on_progress or _bus_progress,
         )
 
         if final_content is None:
+            logger.warning(
+                "Agent loop returned None final_content. tools_used={}, total_messages={}, last_msg_role={}",
+                tools_used,
+                len(all_msgs),
+                all_msgs[-1].get("role") if all_msgs else "N/A",
+            )
             final_content = "I've completed processing but have no response to give."
 
         self._save_turn(session, all_msgs, 1 + len(history))
