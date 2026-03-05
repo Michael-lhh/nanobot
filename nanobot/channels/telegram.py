@@ -441,7 +441,8 @@ class TelegramChannel(BaseChannel):
                         "is_group": message.chat.type != "private",
                     },
                 }
-                self._start_typing(str_chat_id)
+                if self.is_allowed(sender_id):
+                    self._start_typing(str_chat_id)
             buf = self._media_group_buffers[key]
             if content and content != "[empty message]":
                 buf["contents"].append(content)
@@ -450,8 +451,9 @@ class TelegramChannel(BaseChannel):
                 self._media_group_tasks[key] = asyncio.create_task(self._flush_media_group(key))
             return
 
-        # Start typing indicator before processing
-        self._start_typing(str_chat_id)
+        # Start typing indicator only for allowed users (avoid "typing..." for denied users)
+        if self.is_allowed(sender_id):
+            self._start_typing(str_chat_id)
 
         # Forward to the message bus
         await self._handle_message(
